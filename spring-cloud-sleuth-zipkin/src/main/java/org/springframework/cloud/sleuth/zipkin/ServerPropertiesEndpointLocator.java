@@ -25,7 +25,9 @@ import org.springframework.boot.autoconfigure.web.ServerProperties;
 import org.springframework.boot.context.embedded.EmbeddedServletContainerInitializedEvent;
 import org.springframework.cloud.commons.util.InetUtils;
 import org.springframework.cloud.commons.util.InetUtilsProperties;
+import org.springframework.context.EnvironmentAware;
 import org.springframework.context.event.EventListener;
+import org.springframework.core.env.Environment;
 import org.springframework.util.StringUtils;
 
 import zipkin.Endpoint;
@@ -43,7 +45,8 @@ import zipkin.Endpoint;
  * @author Dave Syer
  * @since 1.0.0
  */
-public class ServerPropertiesEndpointLocator implements EndpointLocator {
+public class ServerPropertiesEndpointLocator implements EndpointLocator,
+		EnvironmentAware {
 
 	private static final Log log = LogFactory.getLog(MethodHandles.lookup().lookupClass());
 
@@ -52,12 +55,14 @@ public class ServerPropertiesEndpointLocator implements EndpointLocator {
 	private final InetUtils inetUtils;
 	private final ZipkinProperties zipkinProperties;
 	private Integer port;
+	private Environment environment;
 
 	@Deprecated
 	public ServerPropertiesEndpointLocator(ServerProperties serverProperties,String appName) {
 		this(serverProperties,appName,new ZipkinProperties(), null);
 	}
 
+	@Deprecated
 	public ServerPropertiesEndpointLocator(ServerProperties serverProperties,
 			String appName, ZipkinProperties zipkinProperties, InetUtils inetUtils) {
 		this.serverProperties = serverProperties;
@@ -70,10 +75,16 @@ public class ServerPropertiesEndpointLocator implements EndpointLocator {
 		}
 	}
 
+	public ServerPropertiesEndpointLocator(ServerProperties serverProperties,
+			ZipkinProperties zipkinProperties, InetUtils inetUtils) {
+		this(serverProperties, "unknown", zipkinProperties, inetUtils);
+	}
+
 	@Override
 	public Endpoint local() {
+		String appName = applicationName();
 		String serviceName = StringUtils.hasText(this.zipkinProperties.getService().getName()) ?
-				this.zipkinProperties.getService().getName() : this.appName;
+				this.zipkinProperties.getService().getName() : appName;
 		if (log.isDebugEnabled()) {
 			log.debug("Span will contain serviceName [" + serviceName + "]");
 		}
@@ -111,5 +122,17 @@ public class ServerPropertiesEndpointLocator implements EndpointLocator {
 		else {
 			return ByteBuffer.wrap(this.inetUtils.findFirstNonLoopbackAddress().getAddress()).getInt();
 		}
+	}
+
+	private String applicationName() {
+		if (this.environment == null) {
+			return "unknown";
+		}
+		return this.environment.getProperty("spring.application.name", "unknown");
+	}
+
+	@Override
+	public void setEnvironment(Environment environment) {
+		this.environment = environment;
 	}
 }

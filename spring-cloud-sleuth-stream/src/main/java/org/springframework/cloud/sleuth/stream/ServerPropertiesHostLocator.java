@@ -25,8 +25,9 @@ import org.springframework.boot.context.embedded.EmbeddedServletContainerInitial
 import org.springframework.cloud.commons.util.InetUtils;
 import org.springframework.cloud.commons.util.InetUtilsProperties;
 import org.springframework.cloud.sleuth.Span;
+import org.springframework.context.EnvironmentAware;
 import org.springframework.context.event.EventListener;
-import org.springframework.util.Assert;
+import org.springframework.core.env.Environment;
 import org.springframework.util.StringUtils;
 
 /**
@@ -43,7 +44,7 @@ import org.springframework.util.StringUtils;
  * @author Dave Syer
  * @since 1.0.0
  */
-public class ServerPropertiesHostLocator implements HostLocator {
+public class ServerPropertiesHostLocator implements HostLocator, EnvironmentAware {
 
 	private static final Log log = LogFactory.getLog(MethodHandles.lookup().lookupClass());
 
@@ -52,23 +53,29 @@ public class ServerPropertiesHostLocator implements HostLocator {
 	private final InetUtils inetUtils;
 	private final ZipkinProperties zipkinProperties;
 	private Integer port; // Lazy assigned
+	private Environment environment;
 
 	@Deprecated
 	public ServerPropertiesHostLocator(ServerProperties serverProperties, String appName) {
 		this(serverProperties, appName, new ZipkinProperties(),null);
 	}
 
+	@Deprecated
 	public ServerPropertiesHostLocator(ServerProperties serverProperties, String appName,
 			ZipkinProperties zipkinProperties, InetUtils inetUtils) {
 		this.serverProperties = serverProperties;
 		this.appName = appName;
-		Assert.notNull(this.appName, "appName");
 		this.zipkinProperties = zipkinProperties;
 		if (inetUtils == null) {
 			this.inetUtils = new InetUtils(new InetUtilsProperties());
 		} else {
 			this.inetUtils = inetUtils;
 		}
+	}
+
+	public ServerPropertiesHostLocator(ServerProperties serverProperties,
+			ZipkinProperties zipkinProperties, InetUtils inetUtils) {
+		this(serverProperties, "unknown", zipkinProperties, inetUtils);
 	}
 
 	@Override
@@ -117,7 +124,7 @@ public class ServerPropertiesHostLocator implements HostLocator {
 			serviceName = span.getProcessId();
 		}
 		else {
-			serviceName = this.appName;
+			serviceName = applicationName();
 		}
 		if (log.isDebugEnabled()) {
 			log.debug("Span will contain serviceName [" + serviceName + "]");
@@ -125,4 +132,15 @@ public class ServerPropertiesHostLocator implements HostLocator {
 		return serviceName;
 	}
 
+	private String applicationName() {
+		if (this.environment == null) {
+			return "unknown";
+		}
+		return this.environment.getProperty("spring.application.name", "unknown");
+	}
+
+	@Override
+	public void setEnvironment(Environment environment) {
+		this.environment = environment;
+	}
 }
