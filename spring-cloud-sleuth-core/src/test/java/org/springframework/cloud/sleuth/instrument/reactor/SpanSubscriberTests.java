@@ -56,7 +56,7 @@ public class SpanSubscriberTests {
 				.subscribe(System.out::println);
 
 		then(this.tracer.getCurrentSpan()).isNull();
-		then(spanInOperation.get().getParents().get(0)).isEqualTo(span.getSpanId());
+		then(spanInOperation.get().getTraceId()).isEqualTo(span.getTraceId());
 		then(ExceptionUtils.getLastException()).isNull();
 	}
 
@@ -105,7 +105,7 @@ public class SpanSubscriberTests {
 		then(this.tracer.getCurrentSpan()).isEqualTo(foo2);
 		then(ExceptionUtils.getLastException()).isNull();
 		// parent cause there's an async span in the meantime
-		then(spanInOperation.get().getSavedSpan().getParents().get(0)).isEqualTo(foo2.getSpanId());
+		then(spanInOperation.get().getTraceId()).isEqualTo(foo2.getTraceId());
 		tracer.close(foo2);
 	}
 
