@@ -15,6 +15,7 @@ import org.springframework.cloud.sleuth.TraceKeys;
 import org.springframework.cloud.sleuth.Tracer;
 import org.springframework.cloud.sleuth.sampler.AlwaysSampler;
 import org.springframework.cloud.sleuth.sampler.NeverSampler;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.server.reactive.ServerHttpRequest;
 import org.springframework.http.server.reactive.ServerHttpResponse;
 import org.springframework.util.StringUtils;
@@ -159,15 +160,16 @@ public class TraceWebFilter implements WebFilter {
 
 	/** Override to add annotations not defined in {@link TraceKeys}. */
 	protected void addResponseTags(ServerHttpResponse response, Throwable e) {
-		int httpStatus = response.getStatusCode().value();
-		if (httpStatus == HttpServletResponse.SC_OK && e != null) {
+		HttpStatus httpStatus = response.getStatusCode();
+		if (httpStatus != null && httpStatus.value() == HttpServletResponse.SC_OK && e != null) {
 			// Filter chain threw exception but the response status may not have been set
 			// yet, so we have to guess.
 			tracer().addTag(traceKeys().getHttp().getStatusCode(),
 					String.valueOf(HttpServletResponse.SC_INTERNAL_SERVER_ERROR));
 		}
 		// only tag valid http statuses
-		else if (httpStatus >= 100 && (httpStatus < 200) || (httpStatus > 399)) {
+		else if (httpStatus != null &&
+				(httpStatus.value() >= 100 && (httpStatus.value() < 200) || (httpStatus.value() > 399))) {
 			tracer().addTag(traceKeys().getHttp().getStatusCode(),
 					String.valueOf(response.getStatusCode().value()));
 		}
@@ -190,6 +192,7 @@ public class TraceWebFilter implements WebFilter {
 
 	private void detachOrCloseSpans(Span spanFromRequest) {
 		Span span = spanFromRequest;
+		this.tracer.continueSpan(span);
 		if (span != null) {
 			if (span.hasSavedSpan()) {
 				recordParentSpan(span.getSavedSpan());

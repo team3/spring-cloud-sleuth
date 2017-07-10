@@ -2,7 +2,6 @@ package org.springframework.cloud.sleuth.instrument.web;
 
 import org.assertj.core.api.BDDAssertions;
 import org.junit.Test;
-import org.springframework.beans.factory.BeanFactory;
 import org.springframework.boot.WebApplicationType;
 import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
 import org.springframework.boot.builder.SpringApplicationBuilder;
@@ -32,6 +31,7 @@ public class TraceWebFluxTests {
 		ConfigurableApplicationContext context = new SpringApplicationBuilder(TraceWebFluxTests.Config.class)
 				.web(WebApplicationType.REACTIVE).properties("server.port=0", "spring.jmx.enabled=false",
 						"spring.application.name=TraceWebFluxTests").run();
+		ExceptionUtils.setFail(true);
 		Span span = null;
 		try {
 			span = context.getBean(Tracer.class).createSpan("foo");
@@ -50,13 +50,7 @@ public class TraceWebFluxTests {
 
 	@Configuration
 	@EnableAutoConfiguration
-	// @ConditionalOnWebApplication(type = ConditionalOnWebApplication.Type.REACTIVE)
 	static class Config {
-
-		@Bean
-		TraceWebFilter traceWebFilter(BeanFactory beanFactory) {
-			return new TraceWebFilter(beanFactory);
-		}
 
 		@Bean WebClient webClient() {
 			return WebClient.create();
