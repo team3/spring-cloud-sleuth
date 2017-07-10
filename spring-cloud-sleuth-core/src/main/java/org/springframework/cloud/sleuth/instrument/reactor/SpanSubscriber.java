@@ -28,14 +28,13 @@ class SpanSubscriber extends AtomicBoolean
 	private final Subscriber<? super Object> subscriber;
 	private final Context context;
 	private final Tracer tracer;
-	private final String name;
 	private Subscription s;
 
 	SpanSubscriber(Subscriber<? super Object> subscriber, Context ctx, Tracer tracer,
 			String name) {
 		this.subscriber = subscriber;
 		this.tracer = tracer;
-		this.name = name;
+		//this.name = name;
 		Span root = ctx.getOrDefault(Span.class, tracer.getCurrentSpan());
 		if (log.isTraceEnabled()) {
 			log.trace("Span from context [{}]", root);
@@ -63,36 +62,12 @@ class SpanSubscriber extends AtomicBoolean
 		this.subscriber.onSubscribe(this);
 	}
 
-//	@Override public void onSubscribe(Subscription subscription) {
-//		if (log.isTraceEnabled()) {
-//			log.trace("On subscribe. Stored span is " + this.span);
-//		}
-//		this.s = subscription;
-//		Span currentSpan = this.tracer.getCurrentSpan();
-//		boolean tracingSameTrace = tracingSameTrace(currentSpan);
-//		if (tracingSameTrace) {
-//			this.tracer.continueSpan(this.span);
-//		}
-//		if (log.isTraceEnabled()) {
-//			log.trace("On subscribe - span continued");
-//		}
-//		SpanSubscriber subscriber = new SpanSubscriber(this,
-//				this.context.put(Span.class, currentSpan), this.tracer, this.name);
-//		subscriber.s = subscription;
-//		this.subscriber.onSubscribe(subscriber);
-//	}
-
 	@Override public void request(long n) {
 		this.tracer.continueSpan(this.span);
 		if (log.isTraceEnabled()) {
 			log.trace("Request - continued");
 		}
 		this.s.request(n);
-		// Sometimes it seems that SpanSubscribers are reused thus the state is wrong
-		Span currentSpan = this.tracer.getCurrentSpan();
-		//boolean tracingSameTrace = tracingSameTrace(currentSpan);
-		//Span localSpan = tracingSameTrace ? this.span : currentSpan;
-		//Span rootSpan = tracingSameTrace ? this.rootSpan : null;
 		Span localSpan = this.span;
 		Span rootSpan = this.rootSpan;
 		// We're in the main thread so we don't want to pollute it with wrong spans

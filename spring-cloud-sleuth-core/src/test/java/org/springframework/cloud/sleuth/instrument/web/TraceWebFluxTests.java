@@ -1,6 +1,7 @@
 package org.springframework.cloud.sleuth.instrument.web;
 
 import org.assertj.core.api.BDDAssertions;
+import org.junit.BeforeClass;
 import org.junit.Test;
 import org.springframework.boot.WebApplicationType;
 import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
@@ -23,9 +24,17 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.reactive.function.client.ClientResponse;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Flux;
+import reactor.core.publisher.Hooks;
 import reactor.core.publisher.Mono;
+import reactor.core.scheduler.Schedulers;
 
 public class TraceWebFluxTests {
+
+	@BeforeClass
+	public static void setup() {
+		Hooks.resetOnNewSubscriber();
+		Schedulers.resetFactory();
+	}
 
 	@Test public void should_instrument_web_filter() throws Exception {
 		ConfigurableApplicationContext context = new SpringApplicationBuilder(TraceWebFluxTests.Config.class)

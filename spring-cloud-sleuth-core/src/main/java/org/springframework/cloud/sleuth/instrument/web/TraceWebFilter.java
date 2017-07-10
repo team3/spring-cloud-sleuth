@@ -191,12 +191,9 @@ public class TraceWebFilter implements WebFilter {
 
 	private void detachOrCloseSpans(Span spanFromRequest) {
 		Span span = spanFromRequest;
-		this.tracer.continueSpan(span);
 		if (span != null) {
 			if (span.hasSavedSpan()) {
 				recordParentSpan(span.getSavedSpan());
-			} else {
-				span = tracer().close(span);
 			}
 			recordParentSpan(span);
 			tracer().close(span);
