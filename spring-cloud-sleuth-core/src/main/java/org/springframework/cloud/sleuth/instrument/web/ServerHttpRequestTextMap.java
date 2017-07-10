@@ -18,6 +18,8 @@ class ServerHttpRequestTextMap implements SpanTextMap {
 
 	ServerHttpRequestTextMap(ServerHttpRequest delegate) {
 		this.delegate = delegate;
+		this.additionalHeaders.put(ZipkinHttpSpanExtractor.URI_HEADER,
+				delegate.getPath().pathWithinApplication().value());
 	}
 
 	@Override

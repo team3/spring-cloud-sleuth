@@ -28,12 +28,14 @@ class SpanSubscriber extends AtomicBoolean
 	private final Subscriber<? super Object> subscriber;
 	private final Context context;
 	private final Tracer tracer;
+	private final String name;
 	private Subscription s;
 
 	SpanSubscriber(Subscriber<? super Object> subscriber, Context ctx, Tracer tracer,
 			String name) {
 		this.subscriber = subscriber;
 		this.tracer = tracer;
+		this.name = name;
 		Span root = ctx.getOrDefault(Span.class, tracer.getCurrentSpan());
 		if (log.isTraceEnabled()) {
 			log.trace("Span from context [{}]", root);
@@ -61,36 +63,70 @@ class SpanSubscriber extends AtomicBoolean
 		this.subscriber.onSubscribe(this);
 	}
 
+//	@Override public void onSubscribe(Subscription subscription) {
+//		if (log.isTraceEnabled()) {
+//			log.trace("On subscribe. Stored span is " + this.span);
+//		}
+//		this.s = subscription;
+//		Span currentSpan = this.tracer.getCurrentSpan();
+//		boolean tracingSameTrace = tracingSameTrace(currentSpan);
+//		if (tracingSameTrace) {
+//			this.tracer.continueSpan(this.span);
+//		}
+//		if (log.isTraceEnabled()) {
+//			log.trace("On subscribe - span continued");
+//		}
+//		SpanSubscriber subscriber = new SpanSubscriber(this,
+//				this.context.put(Span.class, currentSpan), this.tracer, this.name);
+//		subscriber.s = subscription;
+//		this.subscriber.onSubscribe(subscriber);
+//	}
+
 	@Override public void request(long n) {
-		if (log.isTraceEnabled()) {
-			log.trace("Request");
-		}
 		this.tracer.continueSpan(this.span);
 		if (log.isTraceEnabled()) {
 			log.trace("Request - continued");
 		}
 		this.s.request(n);
+		// Sometimes it seems that SpanSubscribers are reused thus the state is wrong
+		Span currentSpan = this.tracer.getCurrentSpan();
+		//boolean tracingSameTrace = tracingSameTrace(currentSpan);
+		//Span localSpan = tracingSameTrace ? this.span : currentSpan;
+		//Span rootSpan = tracingSameTrace ? this.rootSpan : null;
+		Span localSpan = this.span;
+		Span rootSpan = this.rootSpan;
 		// We're in the main thread so we don't want to pollute it with wrong spans
 		// that's why we need to detach the current one and continue with its parent
-		Span localRootSpan = this.span;
-		while (localRootSpan != null) {
-			if (this.rootSpan != null) {
-				if (localRootSpan.getSpanId() != this.rootSpan.getSpanId() &&
-						!isRootParentSpan(localRootSpan)) {
-					localRootSpan = continueDetachedSpan(localRootSpan);
+		if (log.isTraceEnabled()) {
+			log.trace("Will detach spans. Root span is " + rootSpan + " and stored span is " + localSpan);
+		}
+		while (localSpan != null) {
+			if (rootSpan != null) {
+				if (localSpan.getSpanId() != rootSpan.getSpanId() &&
+						!isRootParentSpan(localSpan)) {
+					localSpan = continueDetachedSpan(localSpan);
 				} else {
-					localRootSpan = null;
+					localSpan = null;
 				}
-			} else if (!isRootParentSpan(localRootSpan)) {
-				localRootSpan = continueDetachedSpan(localRootSpan);
+			} else if (!isRootParentSpan(localSpan)) {
+				localSpan = continueDetachedSpan(localSpan);
 			} else {
-				localRootSpan = null;
+				localSpan = null;
 			}
 		}
 		if (log.isTraceEnabled()) {
 			log.trace("Request after cleaning. Current span [{}]",
 					this.tracer.getCurrentSpan());
 		}
+	}
+
+	private boolean tracingSameTrace(Span currentSpan) {
+		if (this.span == null && currentSpan == null) {
+			return true;
+		} else if (currentSpan != null && this.span != null) {
+			return currentSpan.getTraceId() == this.span.getTraceId();
+		}
+		return false;
 	}
 
 	private boolean isRootParentSpan(Span localRootSpan) {
@@ -102,7 +138,12 @@ class SpanSubscriber extends AtomicBoolean
 			log.trace("Will detach span {}", localRootSpan);
 		}
 		Span detachedSpan = this.tracer.detach(localRootSpan);
-		return this.tracer.continueSpan(detachedSpan);
+		Span continuedSpan = this.tracer.continueSpan(detachedSpan);
+		if (log.isTraceEnabled()) {
+			log.trace("Now current span is " + continuedSpan + ". Root span is " + this.rootSpan +
+					" and stored span for the subscriber is " + this.span);
+		}
+		return continuedSpan;
 	}
 
 	@Override public void cancel() {

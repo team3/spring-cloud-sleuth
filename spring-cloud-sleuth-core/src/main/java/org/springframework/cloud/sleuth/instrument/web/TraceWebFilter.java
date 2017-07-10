@@ -3,7 +3,6 @@ package org.springframework.cloud.sleuth.instrument.web;
 import java.util.List;
 import java.util.Optional;
 import java.util.regex.Pattern;
-import javax.servlet.http.HttpServletResponse;
 
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
@@ -35,7 +34,7 @@ public class TraceWebFilter implements WebFilter {
 
 	private static final Log log = LogFactory.getLog(TraceWebFilter.class);
 
-	protected static final String TRACE_REQUEST_ATTR = TraceFilter.class.getName()
+	protected static final String TRACE_REQUEST_ATTR = TraceWebFilter.class.getName()
 			+ ".TRACE";
 	private static final String HTTP_COMPONENT = "http";
 
@@ -161,11 +160,11 @@ public class TraceWebFilter implements WebFilter {
 	/** Override to add annotations not defined in {@link TraceKeys}. */
 	protected void addResponseTags(ServerHttpResponse response, Throwable e) {
 		HttpStatus httpStatus = response.getStatusCode();
-		if (httpStatus != null && httpStatus.value() == HttpServletResponse.SC_OK && e != null) {
+		if (httpStatus != null && httpStatus == HttpStatus.OK && e != null) {
 			// Filter chain threw exception but the response status may not have been set
 			// yet, so we have to guess.
 			tracer().addTag(traceKeys().getHttp().getStatusCode(),
-					String.valueOf(HttpServletResponse.SC_INTERNAL_SERVER_ERROR));
+					String.valueOf(HttpStatus.INTERNAL_SERVER_ERROR.value()));
 		}
 		// only tag valid http statuses
 		else if (httpStatus != null &&
