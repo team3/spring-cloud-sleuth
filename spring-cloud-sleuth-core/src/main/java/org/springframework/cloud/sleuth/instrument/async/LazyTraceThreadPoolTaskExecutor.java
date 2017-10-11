@@ -17,7 +17,10 @@
 package org.springframework.cloud.sleuth.instrument.async;
 
 import java.lang.invoke.MethodHandles;
+import java.lang.reflect.Method;
+import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.Callable;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
 import java.util.concurrent.RejectedExecutionHandler;
 import java.util.concurrent.ThreadFactory;
@@ -33,6 +36,7 @@ import org.springframework.cloud.sleuth.TraceKeys;
 import org.springframework.cloud.sleuth.Tracer;
 import org.springframework.core.task.TaskDecorator;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
+import org.springframework.util.ReflectionUtils;
 import org.springframework.util.concurrent.ListenableFuture;
 
 /**
@@ -227,6 +231,39 @@ public class LazyTraceThreadPoolTaskExecutor extends ThreadPoolTaskExecutor {
 
 	@Override public void setTaskDecorator(TaskDecorator taskDecorator) {
 		this.delegate.setTaskDecorator(taskDecorator);
+	}
+
+	@Override protected ExecutorService initializeExecutor(ThreadFactory threadFactory,
+			RejectedExecutionHandler rejectedExecutionHandler) {
+		Method method = ReflectionUtils
+				.findMethod(ThreadPoolTaskExecutor.class, "initializeExecutor",
+						ThreadFactory.class, RejectedExecutionHandler.class);
+		return (ExecutorService) ReflectionUtils.invokeMethod(method, this.delegate,
+				threadFactory, rejectedExecutionHandler);
+	}
+
+	@SuppressWarnings("unchecked")
+	@Override protected BlockingQueue<Runnable> createQueue(int queueCapacity) {
+		Method method = ReflectionUtils
+				.findMethod(ThreadPoolTaskExecutor.class, "createQueue",
+						Integer.class);
+		return (BlockingQueue<Runnable>) ReflectionUtils.invokeMethod(method, this.delegate,
+				queueCapacity);
+	}
+
+	@Override protected String nextThreadName() {
+		Method method = ReflectionUtils
+				.findMethod(ThreadPoolTaskExecutor.class, "nextThreadName");
+		return (String) ReflectionUtils.invokeMethod(method, this.delegate);
+	}
+
+	@Override protected String getDefaultThreadNamePrefix() {
+		if (this.delegate == null) {
+			return super.getDefaultThreadNamePrefix();
+		}
+		Method method = ReflectionUtils
+				.findMethod(ThreadPoolTaskExecutor.class, "getDefaultThreadNamePrefix");
+		return (String) ReflectionUtils.invokeMethod(method, this.delegate);
 	}
 
 	private Tracer tracer() {
