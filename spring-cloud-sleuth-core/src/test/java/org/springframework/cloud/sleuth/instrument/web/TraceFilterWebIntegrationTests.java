@@ -16,28 +16,36 @@
 
 package org.springframework.cloud.sleuth.instrument.web;
 
-import static org.assertj.core.api.Assertions.fail;
-import static org.springframework.cloud.sleuth.assertions.SleuthAssertions.then;
-
 import java.io.IOException;
+import java.util.concurrent.Executor;
 
+import org.apache.catalina.connector.Connector;
+import org.apache.coyote.AbstractProtocol;
+import org.apache.coyote.InternalEndpointAccessor;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.springframework.beans.BeansException;
+import org.springframework.beans.factory.BeanFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.config.BeanPostProcessor;
 import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
+import org.springframework.boot.context.embedded.tomcat.TomcatConnectorCustomizer;
+import org.springframework.boot.context.embedded.tomcat.TomcatEmbeddedServletContainerFactory;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.cloud.sleuth.Sampler;
 import org.springframework.cloud.sleuth.Span;
 import org.springframework.cloud.sleuth.Tracer;
 import org.springframework.cloud.sleuth.assertions.ListOfSpans;
+import org.springframework.cloud.sleuth.instrument.async.LazyTraceExecutor;
 import org.springframework.cloud.sleuth.sampler.AlwaysSampler;
 import org.springframework.cloud.sleuth.trace.TestSpanContextHolder;
 import org.springframework.cloud.sleuth.util.ArrayListSpanAccumulator;
 import org.springframework.cloud.sleuth.util.ExceptionUtils;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.annotation.Order;
 import org.springframework.core.env.Environment;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.client.ClientHttpResponse;
@@ -48,6 +56,9 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.client.DefaultResponseErrorHandler;
 import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestTemplate;
+
+import static org.assertj.core.api.Assertions.fail;
+import static org.springframework.cloud.sleuth.assertions.SleuthAssertions.then;
 
 /**
  * @author Marcin Grzejszczak
@@ -128,6 +139,38 @@ public class TraceFilterWebIntegrationTests {
 				}
 			});
 			return restTemplate;
+		}
+
+		@Bean
+		@Order
+		BeanPostProcessor foo(final BeanFactory beanFactory) {
+			return new BeanPostProcessor() {
+				@Override public Object postProcessBeforeInitialization(Object o,
+						String s) throws BeansException {
+					return o;
+				}
+
+				@Override public Object postProcessAfterInitialization(Object o, String s)
+						throws BeansException {
+					if (o instanceof TomcatEmbeddedServletContainerFactory) {
+						TomcatEmbeddedServletContainerFactory f = (TomcatEmbeddedServletContainerFactory) o;
+						f.addConnectorCustomizers(new TomcatConnectorCustomizer() {
+							@Override
+							public void customize(Connector connector) {
+								AbstractProtocol protocolHandler = (AbstractProtocol) connector.getProtocolHandler();
+								Executor executor = protocolHandler.getExecutor();
+								if (executor == null) {
+									new InternalEndpointAccessor().createExecutor(protocolHandler);
+								}
+								LazyTraceExecutor lazyTraceExecutor = new LazyTraceExecutor(
+										beanFactory, executor);
+								protocolHandler.setExecutor(lazyTraceExecutor);
+							}
+						});
+					}
+					return o;
+				}
+			};
 		}
 	}
 
