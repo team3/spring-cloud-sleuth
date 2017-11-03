@@ -17,38 +17,38 @@
 package org.springframework.cloud.sleuth.instrument.web;
 
 import java.io.IOException;
-import java.util.concurrent.Executor;
+import java.util.Arrays;
+import java.util.List;
+import java.util.stream.Collectors;
 
-import org.apache.catalina.connector.Connector;
-import org.apache.coyote.AbstractProtocol;
-import org.apache.coyote.InternalEndpointAccessor;
+import org.apache.commons.logging.Log;
+import org.apache.commons.logging.LogFactory;
 import org.junit.After;
 import org.junit.Before;
+import org.junit.Rule;
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import org.springframework.beans.BeansException;
-import org.springframework.beans.factory.BeanFactory;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.config.BeanPostProcessor;
 import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
-import org.springframework.boot.context.embedded.tomcat.TomcatConnectorCustomizer;
-import org.springframework.boot.context.embedded.tomcat.TomcatEmbeddedServletContainerFactory;
+import org.springframework.boot.autoconfigure.web.BasicErrorController;
+import org.springframework.boot.autoconfigure.web.ErrorAttributes;
+import org.springframework.boot.autoconfigure.web.ErrorProperties;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.rule.OutputCapture;
 import org.springframework.cloud.sleuth.Sampler;
 import org.springframework.cloud.sleuth.Span;
 import org.springframework.cloud.sleuth.Tracer;
 import org.springframework.cloud.sleuth.assertions.ListOfSpans;
-import org.springframework.cloud.sleuth.instrument.async.LazyTraceExecutor;
 import org.springframework.cloud.sleuth.sampler.AlwaysSampler;
 import org.springframework.cloud.sleuth.trace.TestSpanContextHolder;
 import org.springframework.cloud.sleuth.util.ArrayListSpanAccumulator;
 import org.springframework.cloud.sleuth.util.ExceptionUtils;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.core.annotation.Order;
 import org.springframework.core.env.Environment;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.client.ClientHttpResponse;
+import org.springframework.stereotype.Controller;
 import org.springframework.test.context.junit4.SpringJUnit4ClassRunner;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestMethod;
@@ -72,6 +72,7 @@ public class TraceFilterWebIntegrationTests {
 	@Autowired ArrayListSpanAccumulator accumulator;
 	@Autowired RestTemplate restTemplate;
 	@Autowired Environment environment;
+	@Rule public OutputCapture capture = new OutputCapture();
 
 	@Before
 	@After
@@ -94,6 +95,15 @@ public class TraceFilterWebIntegrationTests {
 				.hasASpanWithTagEqualTo(Span.SPAN_ERROR_TAG_NAME,
 						"Request processing failed; nested exception is java.lang.RuntimeException: Throwing exception")
 				.hasRpcTagsInProperOrder();
+		// issue#714
+		Span span = this.accumulator.getSpans().get(0);
+		String hex = Span.idToHex(span.getTraceId());
+		String[] split = capture.toString().split("\n");
+		List<String> list = Arrays.stream(split).filter(s -> s.contains(
+				"Servlet.service() for servlet [dispatcherServlet] in context with path [] threw exception"))
+				.filter(s -> s.contains("[bootstrap," + hex + "," + hex + ",true]"))
+				.collect(Collectors.toList());
+		then(list).isNotEmpty();
 	}
 
 	@Test
@@ -142,35 +152,8 @@ public class TraceFilterWebIntegrationTests {
 		}
 
 		@Bean
-		@Order
-		BeanPostProcessor foo(final BeanFactory beanFactory) {
-			return new BeanPostProcessor() {
-				@Override public Object postProcessBeforeInitialization(Object o,
-						String s) throws BeansException {
-					return o;
-				}
-
-				@Override public Object postProcessAfterInitialization(Object o, String s)
-						throws BeansException {
-					if (o instanceof TomcatEmbeddedServletContainerFactory) {
-						TomcatEmbeddedServletContainerFactory f = (TomcatEmbeddedServletContainerFactory) o;
-						f.addConnectorCustomizers(new TomcatConnectorCustomizer() {
-							@Override
-							public void customize(Connector connector) {
-								AbstractProtocol protocolHandler = (AbstractProtocol) connector.getProtocolHandler();
-								Executor executor = protocolHandler.getExecutor();
-								if (executor == null) {
-									new InternalEndpointAccessor().createExecutor(protocolHandler);
-								}
-								LazyTraceExecutor lazyTraceExecutor = new LazyTraceExecutor(
-										beanFactory, executor);
-								protocolHandler.setExecutor(lazyTraceExecutor);
-							}
-						});
-					}
-					return o;
-				}
-			};
+		MyErrorController myErrorController(ErrorAttributes errorAttributes) {
+			return new MyErrorController(errorAttributes);
 		}
 	}
 
@@ -185,6 +168,23 @@ public class TraceFilterWebIntegrationTests {
 		@RequestMapping(path = "/test_bad_request", method = RequestMethod.GET)
 		public ResponseEntity<?> processFail() {
 			return ResponseEntity.badRequest().build();
+		}
+	}
+
+	@Controller
+	public static class MyErrorController extends BasicErrorController {
+
+		private static final Log log = LogFactory.getLog(MyErrorController.class);
+
+		public MyErrorController(ErrorAttributes errorAttributes) {
+			super(errorAttributes, new ErrorProperties());
+			log.info("Created error controller with errorAttributes [" + errorAttributes + "]");
+		}
+
+		@RequestMapping(produces = "application/json")
+		public ResponseEntity<String> onError() {
+			log.error("KABOOM!");
+			return ResponseEntity.status(500).build();
 		}
 	}
 }

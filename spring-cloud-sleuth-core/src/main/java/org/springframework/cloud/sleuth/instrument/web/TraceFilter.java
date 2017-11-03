@@ -141,6 +141,7 @@ public class TraceFilter extends GenericFilterBean {
 		}
 		HttpServletRequest request = (HttpServletRequest) servletRequest;
 		HttpServletResponse response = (HttpServletResponse) servletResponse;
+		detachPreviousSpan();
 		String uri = this.urlPathHelper.getPathWithinApplication(request);
 		boolean skip = this.skipPattern.matcher(uri).matches()
 				|| Span.SPAN_NOT_SAMPLED.equals(ServletUtils.getHeader(request, response, Span.SAMPLED_NAME));
@@ -178,6 +179,16 @@ public class TraceFilter extends GenericFilterBean {
 		}
 	}
 
+	private void detachPreviousSpan() {
+		if (tracer().isTracing()) {
+			Span span = tracer().getCurrentSpan();
+			if (log.isDebugEnabled()) {
+				log.debug("Detaching the span " + span + " since the response was unsuccessful");
+			}
+			tracer().detach(span);
+		}
+	}
+
 	private Span parentSpan(Span span) {
 		if (span == null) {
 			return null;
@@ -201,6 +212,7 @@ public class TraceFilter extends GenericFilterBean {
 			addResponseTags(response, null);
 			if (request.getAttribute(TraceRequestAttributes.ERROR_HANDLED_SPAN_REQUEST_ATTR) == null) {
 				tracer().close(spanFromRequest);
+				request.setAttribute(TraceRequestAttributes.ERROR_HANDLED_SPAN_REQUEST_ATTR, spanFromRequest);
 			}
 		}
 	}
@@ -229,7 +241,7 @@ public class TraceFilter extends GenericFilterBean {
 			recordParentSpan(span);
 			// in case of a response with exception status will close the span when exception dispatch is handled
 			// checking if tracing is in progress due to async / different order of view controller processing
-			if (httpStatusSuccessful(response) && tracer().isTracing()) {
+			if (httpStatusNot5xx(response) && tracer().isTracing() && exception == null) {
 				if (log.isDebugEnabled()) {
 					log.debug("Closing the span " + span + " since the response was successful");
 				}
@@ -240,15 +252,15 @@ public class TraceFilter extends GenericFilterBean {
 					log.debug(
 							"Won't detach the span " + span + " since error has already been handled");
 				}
-			}  else if ((shouldCloseSpan(request) || isRootSpan(span)) && tracer().isTracing() && stillTracingCurrentSpan(span)) {
+			}  else if (exception == null && (shouldCloseSpan(request) || isRootSpan(span)) && tracer().isTracing() && stillTracingCurrentSpan(span)) {
 				if (log.isDebugEnabled()) {
 					log.debug("Will close span " + span + " since " + (shouldCloseSpan(request) ? "some component marked it for closure" : "response was unsuccessful for the root span"));
 				}
 				tracer().close(span);
 				clearTraceAttribute(request);
-			} else if (tracer().isTracing()) {
+			} else if (exception == null && tracer().isTracing()) {
 				if (log.isDebugEnabled()) {
-					log.debug("Detaching the span " + span + " since the response was unsuccessful");
+					log.debug("Will detach span " + span);
 				}
 				tracer().detach(span);
 				clearTraceAttribute(request);
@@ -292,6 +304,14 @@ public class TraceFilter extends GenericFilterBean {
 			// should be already done by HttpServletResponse wrappers
 			SsLogSetter.annotateWithServerSendIfLogIsNotAlreadyPresent(parent);
 		}
+	}
+
+	private boolean httpStatusNot5xx(HttpServletResponse response) {
+		if (response.getStatus() == 0) {
+			return false;
+		}
+		HttpStatus.Series httpStatusSeries = HttpStatus.Series.valueOf(response.getStatus());
+		return httpStatusSeries != HttpStatus.Series.SERVER_ERROR;
 	}
 
 	private boolean httpStatusSuccessful(HttpServletResponse response) {
