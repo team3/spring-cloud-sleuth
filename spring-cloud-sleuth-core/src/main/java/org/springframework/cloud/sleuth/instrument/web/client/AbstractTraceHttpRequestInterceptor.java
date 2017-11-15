@@ -16,6 +16,7 @@
 
 package org.springframework.cloud.sleuth.instrument.web.client;
 
+import java.io.IOException;
 import java.lang.invoke.MethodHandles;
 import java.net.URI;
 
@@ -27,6 +28,8 @@ import org.springframework.cloud.sleuth.Tracer;
 import org.springframework.cloud.sleuth.instrument.web.HttpTraceKeysInjector;
 import org.springframework.cloud.sleuth.util.SpanNameUtil;
 import org.springframework.http.HttpRequest;
+import org.springframework.http.client.ClientHttpResponse;
+
 /**
  * Abstraction over classes that interact with Http requests. Allows you
  * to enrich the request headers with trace related information.
@@ -65,6 +68,17 @@ abstract class AbstractTraceHttpRequestInterceptor {
 		}
 	}
 
+	/**
+	 * Tracks the http response using proper tags
+	 */
+	protected void publishFinishEvent(ClientHttpResponse response) {
+		addResponseTags(response);
+
+		if (log.isDebugEnabled()) {
+			log.debug("Span [" + this.tracer.getCurrentSpan() + "] finished");
+		}
+	}
+
 	private String getName(URI uri) {
 		// The returned name should comply with RFC 882 - Section 3.1.2.
 		// i.e Header values must composed of printable ASCII values.
@@ -76,7 +90,7 @@ abstract class AbstractTraceHttpRequestInterceptor {
 	}
 
 	/**
-	 * Adds HTTP tags to the client side span
+	 * Adds HTTP request tags to the client side span
 	 */
 	protected void addRequestTags(HttpRequest request) {
 		this.keysInjector.addRequestTags(request.getURI().toString(),
@@ -84,6 +98,17 @@ abstract class AbstractTraceHttpRequestInterceptor {
 				request.getURI().getPath(),
 				request.getMethod().name(),
 				request.getHeaders());
+	}
+
+	/**
+	 * Adds HTTP response tags to the client side span
+	 */
+	protected void addResponseTags(ClientHttpResponse response) {
+		try {
+			this.keysInjector.addResponseTags(this.tracer.getCurrentSpan(), response.getStatusCode());
+		} catch (IOException e) {
+			log.error(e);
+		}
 	}
 
 	/**

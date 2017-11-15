@@ -49,10 +49,14 @@ public class TraceRestTemplateInterceptor extends AbstractTraceHttpRequestInterc
 	}
 
 	@Override
-	public ClientHttpResponse intercept(HttpRequest request, byte[] body,
-			ClientHttpRequestExecution execution) throws IOException {
+	public ClientHttpResponse intercept(HttpRequest request, byte[] body, ClientHttpRequestExecution execution)
+		throws IOException {
 		publishStartEvent(request);
-		return response(request, body, execution);
+
+		ClientHttpResponse response = response(request, body, execution);
+		publishFinishEvent(response);
+
+		return response;
 	}
 
 	private ClientHttpResponse response(HttpRequest request, byte[] body,

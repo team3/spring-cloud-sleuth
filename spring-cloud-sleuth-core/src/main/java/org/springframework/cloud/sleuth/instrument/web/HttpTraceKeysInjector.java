@@ -7,6 +7,7 @@ import java.util.Map;
 import org.springframework.cloud.sleuth.Span;
 import org.springframework.cloud.sleuth.TraceKeys;
 import org.springframework.cloud.sleuth.Tracer;
+import org.springframework.http.HttpStatus;
 import org.springframework.util.StringUtils;
 
 /**
@@ -44,6 +45,13 @@ public class HttpTraceKeysInjector {
 		tagSpan(span, this.traceKeys.getHttp().getHost(), host);
 		tagSpan(span, this.traceKeys.getHttp().getPath(), path);
 		tagSpan(span, this.traceKeys.getHttp().getMethod(), method);
+	}
+
+	/**
+	 * Adds tags from the HTTP repos to the given Span
+	 */
+	public void addResponseTags(Span span, HttpStatus httpStatus) {
+		tagSpan(span, this.traceKeys.getHttp().getStatusCode(), String.valueOf(httpStatus.value()));
 	}
 
 	/**
